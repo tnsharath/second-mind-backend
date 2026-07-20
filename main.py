@@ -15,6 +15,7 @@ Endpoints (see routers/ for details):
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from typing import Dict, Optional
 
 from dotenv import load_dotenv
 
@@ -22,17 +23,26 @@ load_dotenv()  # must run before local modules read env vars at import time
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 from sqlmodel import Session  # noqa: E402
 
-from db import create_db_and_tables, engine, seed  # noqa: E402
+from db import DB_URL, create_db_and_tables, engine, seed  # noqa: E402
 from routers import briefing, calendar, chat, context, goals, memory  # noqa: E402
+
+# Surfaced by /health so a broken DB connection is diagnosable without
+# Vercel log access; startup stays alive even if the DB is unreachable.
+_startup_error: str | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_db_and_tables()
-    with Session(engine) as session:
-        seed(session)
+    global _startup_error
+    try:
+        create_db_and_tables()
+        with Session(engine) as session:
+            seed(session)
+    except Exception as exc:  # noqa: BLE001 — reported via /health
+        _startup_error = f"{type(exc).__name__}: {exc}"
     yield
 
 
@@ -56,5 +66,18 @@ app.include_router(briefing.router)
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> Dict[str, Optional[str]]:
+    """Liveness + DB diagnostics (no secrets: scheme and host only)."""
+    result: Dict[str, Optional[str]] = {
+        "status": "ok",
+        "db": DB_URL.split(":", 1)[0],
+        "dbHost": DB_URL.split("@")[-1].split("/")[0] if "@" in DB_URL else None,
+        "startupError": _startup_error,
+    }
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        result["dbConnection"] = "ok"
+    except Exception as exc:  # noqa: BLE001 — surface for debugging
+        result["dbConnection"] = f"{type(exc).__name__}: {exc}"
+    return result
