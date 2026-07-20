@@ -73,6 +73,7 @@ async def health() -> Dict[str, Optional[str]]:
         "db": DB_URL.split(":", 1)[0],
         "dbHost": DB_URL.split("@")[-1].split("/")[0] if "@" in DB_URL else None,
         "startupError": _startup_error,
+        "lastChatError": chat.LAST_ERROR["error"],
     }
     try:
         with engine.connect() as conn:

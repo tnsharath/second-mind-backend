@@ -16,9 +16,23 @@ router = APIRouter(tags=["chat"])
 
 HISTORY_LIMIT = 20
 
+# Last unhandled error, surfaced via /health for deployments where logs
+# are not easily accessible (e.g. Vercel without log access).
+LAST_ERROR: dict = {"error": None}
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest, session: SessionDep) -> ChatResponse:
+    try:
+        return await _chat(payload, session)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — record for /health diagnostics
+        LAST_ERROR["error"] = f"{type(exc).__name__}: {exc}"
+        raise
+
+
+async def _chat(payload: ChatRequest, session: SessionDep) -> ChatResponse:
     conversation_id = payload.conversation_id or uuid.uuid4().hex
 
     conversation = session.get(Conversation, conversation_id)

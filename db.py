@@ -25,12 +25,14 @@ def _resolve_db_url() -> str:
         if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://"):]
         # Supabase appends a "supa" routing hint to pooled URLs; psycopg2
-        # rejects unknown connection options, so strip it.
-        parsed = urlsplit(url)
-        query = [
-            (k, v) for k, v in parse_qsl(parsed.query) if k != "supa"
-        ]
-        return urlunsplit(parsed._replace(query=urlencode(query)))
+        # rejects unknown connection options, so strip it. Only touch URLs
+        # that actually have a query string — urlsplit/urlunsplit would
+        # otherwise corrupt host-less URLs like sqlite:///./aura.db.
+        if "?" in url:
+            parsed = urlsplit(url)
+            query = [(k, v) for k, v in parse_qsl(parsed.query) if k != "supa"]
+            url = urlunsplit(parsed._replace(query=urlencode(query)))
+        return url
     return "sqlite:////tmp/aura.db" if os.getenv("VERCEL") else "sqlite:///./aura.db"
 
 
