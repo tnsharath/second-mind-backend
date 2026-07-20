@@ -65,7 +65,8 @@ The included `Dockerfile` works on most container platforms.
 | `OPENAI_API_KEY` | For `/chat` and LLM-generated briefing/summary | Your OpenAI API key |
 | `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
 | `AURA_SYSTEM_PROMPT` | No | Override the assistant persona |
-| `AURA_DB_URL` | No | SQLAlchemy URL, defaults to `sqlite:///./aura.db` |
+| `AURA_DB_URL` | No | SQLAlchemy URL. On Vercel, `POSTGRES_URL` from the Supabase integration is used automatically; otherwise defaults to `sqlite:///./aura.db` (`/tmp` on Vercel) |
+| `POSTGRES_URL` | No | Injected by the Vercel–Supabase integration; used when `AURA_DB_URL` is unset. The `postgres://` scheme is normalized to `postgresql://` automatically |
 
 ## Next steps
 

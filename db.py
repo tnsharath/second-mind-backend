@@ -11,13 +11,27 @@ from sqlmodel import Session, SQLModel, create_engine, select
 import models  # noqa: F401 — register tables on SQLModel.metadata
 from models import CalendarEvent, Goal, MemoryItem
 
-# Vercel's serverless filesystem is read-only outside /tmp, so default the
-# SQLite file there when deployed (data is ephemeral per instance — use a
-# hosted DB via AURA_DB_URL for real persistence).
-_default_db = "sqlite:////tmp/aura.db" if os.getenv("VERCEL") else "sqlite:///./aura.db"
-DB_URL = os.getenv("AURA_DB_URL", _default_db)
+# Database URL resolution, in priority order:
+#   1. AURA_DB_URL          — explicit override (local dev, hosted DB)
+#   2. POSTGRES_URL         — injected by the Vercel–Supabase integration
+#   3. SQLite fallback      — ./aura.db locally, /tmp on Vercel (read-only
+#                             serverless filesystem; ephemeral per instance)
+def _resolve_db_url() -> str:
+    url = os.getenv("AURA_DB_URL") or os.getenv("POSTGRES_URL")
+    if url:
+        # SQLAlchemy requires the "postgresql://" scheme; Supabase/Vercel
+        # may provide the legacy "postgres://" spelling.
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        return url
+    return "sqlite:////tmp/aura.db" if os.getenv("VERCEL") else "sqlite:///./aura.db"
+
+
+DB_URL = _resolve_db_url()
 connect_args = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
-engine = create_engine(DB_URL, connect_args=connect_args)
+# Serverless (Vercel) creates a fresh engine per instance; keep the pool
+# small so we don't exhaust Supabase's connection limit.
+engine = create_engine(DB_URL, connect_args=connect_args, pool_size=2, max_overflow=1)
 
 
 def create_db_and_tables() -> None:
