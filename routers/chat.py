@@ -40,6 +40,10 @@ async def _chat(payload: ChatRequest, session: SessionDep) -> ChatResponse:
         title = payload.message if len(payload.message) <= 40 else payload.message[:39] + "…"
         conversation = Conversation(id=conversation_id, title=title)
         session.add(conversation)
+        # Flush so the conversation row exists before the FK-referencing
+        # message is inserted — Postgres enforces the constraint (SQLite,
+        # where this was developed, does not by default).
+        session.flush()
 
     session.add(ChatMessage(conversation_id=conversation_id, role="user", content=payload.message))
     conversation.updated_at = datetime.now()
