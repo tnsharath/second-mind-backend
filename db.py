@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, time, timedelta
 from typing import Annotated, Iterator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -23,7 +24,13 @@ def _resolve_db_url() -> str:
         # may provide the legacy "postgres://" spelling.
         if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://"):]
-        return url
+        # Supabase appends a "supa" routing hint to pooled URLs; psycopg2
+        # rejects unknown connection options, so strip it.
+        parsed = urlsplit(url)
+        query = [
+            (k, v) for k, v in parse_qsl(parsed.query) if k != "supa"
+        ]
+        return urlunsplit(parsed._replace(query=urlencode(query)))
     return "sqlite:////tmp/aura.db" if os.getenv("VERCEL") else "sqlite:///./aura.db"
 
 
